@@ -1040,7 +1040,7 @@ def get_two_digits_or_words(line: str) -> int:
 
 
 if __name__ == '__main__':
-    input_lines = list(filter(None, puzzle_input.splitlines(False)))
+    input_lines = puzzle_input.strip().splitlines(False)
 
     print(f"Digit-only result: {sum(map(get_two_digits, input_lines))}")
     print(f"Digit/word result: {sum(map(get_two_digits_or_words, input_lines))}")
