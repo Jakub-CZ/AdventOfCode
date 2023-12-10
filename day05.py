@@ -1,7 +1,6 @@
 import re
-import sys
-from itertools import batched, pairwise, chain
-from operator import attrgetter
+from itertools import batched, chain
+from operator import itemgetter
 
 almanac = """
 seeds: 1848591090 462385043 2611025720 154883670 1508373603 11536371 3692308424 16905163 1203540561 280364121 3755585679 337861951 93589727 738327409 3421539474 257441906 3119409201 243224070 50985980 7961058
@@ -222,36 +221,37 @@ maps = [sorted(map(dest_and_srcrange, _map.splitlines()), key=(lambda tup: tup[1
 
 
 # PART 2
-def apply_map_to_range(r: range, _map: list[tuple[int, range]]):
-    """An input range may have to get sliced to subranges, each mapping to a different output range."""
-    # assume map is sorted by source ranges
-    # add "sentinels" on both ends
-    _map = [(0, range(_map[0][1].start))] + _map + [(M := sys.maxsize, range(M, M))]
-    # processing in pairs just to handle gaps between two ranges
-    for (out1, map1r), (_, map2r) in pairwise(_map):
-        if r.stop < map1r.start:  # we're done
-            break
-        if r.start < map1r.stop and r.stop > map1r.start:  # input range overlaps with 1st mapping range
-            yield range(
-                max(r.start, map1r.start) - map1r.start + out1,
-                min(r.stop, map1r.stop) - map1r.start + out1
-            )
-        if r.start < map2r.start and r.stop > map1r.stop:  # input range overlaps with gap between the ranges
-            yield range(
-                max(r.start, map1r.stop),
-                min(r.stop, map2r.start)
-            )
+def map_lines_to_dict(lines: str):
+    # Example: "50 98 2\n52 50 48" -> [(52, 50, 48), (50, 98, 2)] -> {50: (48, 52), 98: (2, 50)}
+    sorted_map_tuples = sorted([tuple(map(int, line.split())) for line in lines.splitlines()], key=itemgetter(1))
+    return {src: (ln, dest) for dest, src, ln in sorted_map_tuples}
 
 
-def apply_maps_to_ranges(rs: list[range]) -> list[range]:
-    for _map in maps:
-        rs = sorted(filter(None, chain.from_iterable(apply_map_to_range(r, _map) for r in rs)),
-                    key=attrgetter("start"))
-    return sorted(rs, key=attrgetter("start"))
+def apply_map_to_range(r_ptr: int, remaining: int, _map: dict[int, tuple[int, int]]):
+    """An input range may get mapped to multiple disjoint output subranges."""
+    for map_src, (map_ln, map_dest) in _map.items():
+        if map_src > r_ptr and remaining:  # process identity mapping that precedes current mapping
+            mapped_len = min(remaining, map_src - r_ptr)
+            remaining -= mapped_len
+            yield r_ptr, mapped_len
+            r_ptr += mapped_len
+        if map_src <= r_ptr < map_src + map_ln and remaining:  # input range overlaps with current mapping
+            mapped_len = min(remaining, map_src + map_ln - r_ptr)
+            remaining -= mapped_len
+            yield r_ptr - map_src + map_dest, mapped_len
+            r_ptr += mapped_len
+    if remaining:
+        yield r_ptr, remaining
 
 
-seeds_from_ranges = [range(start, start + length) for start, length in batched(seeds, 2)]
+def apply_maps_to_ranges(rs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    for _map in map_dicts:
+        rs = list(filter(None, chain.from_iterable(apply_map_to_range(r, l, _map) for r, l in rs)))
+    return sorted(rs)
+
+
+map_dicts = list(map(map_lines_to_dict, almanac_sections[1:]))
 
 if __name__ == '__main__':
     print(f"Closest location for individual seeds: {min(map(apply_maps, seeds))} (910845529)")
-    print(f"Closest location for seed ranges: {apply_maps_to_ranges(seeds_from_ranges)[0].start} (77435348)")
+    print(f"Closest location for seed ranges: {apply_maps_to_ranges(batched(seeds, 2))[0][0]} (77435348)")
