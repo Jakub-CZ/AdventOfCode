@@ -1,14 +1,7 @@
 import re
+from functools import cache, partial
 
 input_lines = """
-???.### 1,1,3
-.??..??...?##. 1,1,3
-?#?#?#?#?#?#?#? 1,3,1,6
-????.#...#... 4,1,1
-????.######..#####. 1,6,5
-?###???????? 3,2,1
-""".strip().splitlines(False)
-input_linesx = """
 ??????.??#. 2,3
 ??.?###????????? 2,4,4
 ?????????.??##? 1,2,1,1,5
@@ -1012,36 +1005,38 @@ input_linesx = """
 """.strip().splitlines(False)
 
 
-# PART 1
-def validate_prefix(prefix, target_groups, final=False):
-    prefix_groups = [m.end() - m.start() for m in re.finditer("#+", prefix)]
-    if final:
-        return prefix_groups == target_groups
-    for i, (pg, tg) in enumerate(zip(prefix_groups, target_groups), start=1):
-        if (i < len(prefix_groups) or final) and pg != tg:
-            return False
-        if i == len(prefix_groups) and pg > tg:  # last group may not be complete (if not final)
-            return False
-    return True
+@cache
+def solve_from_largest(line, groups: tuple[int, ...]):
+    # Start with the largest group, then solve the surrounding remainders recursively.
+    if not groups:  # resolve singular case
+        return 0 if "#" in line else 1
+    g_idx = groups.index(largest_grp := max(groups))  # select leftmost largest group
+    # remaining subgroups
+    left_grps, right_grps = groups[:g_idx], groups[g_idx + 1:]
+    # least amount of space needed for each subgroup, incl. separation from selected group
+    left_min_space, right_min_space = sum(left_grps) + len(left_grps), sum(right_grps) + len(right_grps)
+    total = 0
+    # sliding window (size=largest_grp) with enough space for the remaining subgroups
+    for i in range(left_min_space, len(line) - largest_grp - right_min_space + 1):
+        # window must not contain '.', and must not be surrounded by '#'
+        if "." in line[i:i + largest_grp] or \
+                (i >= 1 and line[i - 1] == "#") or \
+                (i + largest_grp < len(line) and line[i + largest_grp] == "#"):
+            continue
+        if not (left_ars := solve_from_largest(line[:max(i - 1, 0)], left_grps)):
+            continue
+        total += left_ars * solve_from_largest(line[i + largest_grp + 1:], right_grps)
+    return total
 
 
-def solve_line(line: str, groups: list[int]):
-    remaining = sum(groups) - line.count("#")
-    if remaining < 0:
-        return []
-    # validate until '?', or the end
-    so_far = line.split("?", maxsplit=1)[0]
-    if not validate_prefix(so_far, groups):
-        return []
-    if (x := line.find("?")) < 0:
-        return [line] if validate_prefix(line, groups, final=True) else []
-    return solve_line(line[:x] + "#" + line[x + 1:], groups) + solve_line(line[:x] + "." + line[x + 1:], groups)
-
-
-def count_solutions(line):
+def count_folded_solutions(line, foldfactor=1):
     record, group_str = line.split()
-    return len(solve_line(record, list(map(int, group_str.split(",")))))
+    record = "?".join([record] * foldfactor)
+    record = re.sub(r"\.+", ".", record.strip("."))  # clusters of multiple '.' are irrelevant
+    groups = tuple(map(int, group_str.split(","))) * foldfactor
+    return solve_from_largest(record, groups)
 
 
 if __name__ == '__main__':
-    print(f"Sum of different arrangements: {sum(map(count_solutions, input_lines))}")
+    print(f"Sum of different arrangements: {sum(map(count_folded_solutions, input_lines))}")
+    print(f"- with unfolded records: {sum(map(partial(count_folded_solutions, foldfactor=5), input_lines))}")
