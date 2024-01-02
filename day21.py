@@ -1,3 +1,6 @@
+import re
+from itertools import count
+
 map_lines = """
 ...........
 .....###.#.
@@ -144,14 +147,16 @@ map_linesx = """
 .#.....#...#.#.............#.....#.....#..#.....#.........#...........#...#......#............#..#.#.......#......#................
 ...................................................................................................................................
 """.strip().splitlines(False)
+map_lines = [line * 3 for line in map_lines] * 3
 WIDTH = len(map_lines[0])
 HEIGHT = len(map_lines)
-start = next((x, y) for y, line in enumerate(map_lines) if (x := line.find("S")) >= 0)
+starts = list((m.start(), y) for y, line in enumerate(map_lines) for m in re.finditer("S", line))
+start_pos = starts[len(starts) // 2]
 
 
 # PART 1
 def make_steps(n):
-    positions = {start}
+    positions = {start_pos}
     for _ in range(n):
         new_positions = set()
         for x, y in positions:
@@ -163,18 +168,59 @@ def make_steps(n):
     return positions
 
 
+def steps_to_cross_and_fill(start):
+    north_touch = south_touch = east_touch = west_touch = None
+    positions = {start}
+    got_after_even_odd = [positions, set()]  # visited positions after last even/odd number of steps
+    for step in count():
+        new_positions = set()
+        for x, y in positions:
+            if not north_touch and y == 0: north_touch = (step, (x, y))
+            if not south_touch and y == HEIGHT - 1: south_touch = (step, (x, y))
+            if not east_touch and x == WIDTH - 1: east_touch = (step, (x, y))
+            if not west_touch and x == 0: west_touch = (step, (x, y))
+            for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < WIDTH and 0 <= ny < HEIGHT and map_lines[ny][nx] != "#":
+                    new_positions.add((nx, ny))
+        if len(new_positions) <= len(got_after_even_odd[(step + 1) % 2]):  # positions no longer grow; map was full
+            touch_points = [t for t in (north_touch, south_touch, east_touch, west_touch) if t[0]]
+            return touch_points, (step-1, got_after_even_odd)
+        got_after_even_odd[(step + 1) % 2] = new_positions
+        positions = new_positions
+
+
 def print_map(positions):
     for row, line in enumerate(map_lines):
         new_line = list(line)
         for col in [x for (x, y) in positions if y == row]:
             new_line[col] = "O"
         print("".join(new_line))
+    print("-" * 50)
 
 
 # PART 2
-
+# TODO: record entry points from primary map to each of the map clones (those are new starting points)
+#         - possibly need to record all entry points, not just the first one
+#  - how many steps to fill a map completely (i.e. identity after 2 steps)
+#    - depends on the starting points
+#    - is there any repetition from some moment?
+#  - we might be able to cheat; the large map is sparse, so the spreading pattern is perfectly regular
 
 if __name__ == '__main__':
-    reachable_plots = make_steps(64)
+    # TODO *TODO* *TODO* : https://work.njae.me.uk/2023/12/29/advent-of-code-2023-day-21/ ***
+    reachable_plots = make_steps(16)
     print(f"Reachable garden plots: {len(reachable_plots)}")
-    # print_map(reachable_plots)
+    print_map(reachable_plots)
+    touch_points, (steps_to_fill, position_sets) = steps_to_cross_and_fill(start_pos)
+    print(f"{touch_points=}")
+    print(f"{steps_to_fill=}")
+    print(f"{[len(s) for s in position_sets]=}")
+
+    # print_map(make_steps(6))
+    # print_map(make_steps(7))
+    # print_map(make_steps(8))
+    # print_map(make_steps(13))
+    for _, touch in touch_points:
+        # TODO: mirror the touch point + add extra step
+        print(steps_to_cross_and_fill(touch)[0])
